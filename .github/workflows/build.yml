@@ -1,0 +1,64 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Windows PowerShell 5.1 is what the exe runs on, so check the syntax with it.
+      - name: Check script for syntax errors (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\ServiceChecker.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Host $_ }; throw "Syntax errors found" }
+          Write-Host "No syntax errors"
+
+      - name: Install ps2exe
+        shell: pwsh
+        run: Install-Module ps2exe -Scope CurrentUser -Force
+
+      - name: Build EXE
+        shell: pwsh
+        run: |
+          Invoke-ps2exe -inputFile .\ServiceChecker.ps1 `
+            -outputFile .\ServiceChecker.exe `
+            -noConsole `
+            -requireAdmin `
+            -STA `
+            -title "Service Checker" `
+            -product "Service Checker" `
+            -version "1.0.0"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ServiceChecker
+          path: ServiceChecker.exe
+
+      - name: Publish release (only on version tags)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ServiceChecker.exe
+
+  # Runs the real checks on Windows: scan, break one service on purpose, check
+  # it gets flagged, fix it, check it is back. Separate job, so a failure here
+  # shows red but does not block the exe.
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan, break DPS, detect, fix
+        shell: powershell
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests\selftest.ps1
