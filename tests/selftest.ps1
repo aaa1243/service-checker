@@ -28,7 +28,8 @@ Write-Host '=== 1b. Run from text, the way the one-liner does ==='
 $json = Join-Path $out 'oneliner.json'
 & powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((Get-Content -Raw '$tool'))) -NoGui -Json '$json' -OutDir '$out'" | Out-Host
 if (-not (Test-Path $json)) { throw 'Running from text wrote no JSON' }
-if (@(Get-Content $json -Raw | ConvertFrom-Json).Count -lt 12) { throw 'Running from text returned too few rows' }
+$rows2 = Get-Content $json -Raw | ConvertFrom-Json
+if (@($rows2).Count -lt 12) { throw "Running from text returned $(@($rows2).Count) rows, expected at least 12" }
 
 Write-Host '=== 2. Break DPS on purpose ==='
 Set-Service -Name DPS -StartupType Disabled
